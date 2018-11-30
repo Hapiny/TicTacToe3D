@@ -1,37 +1,43 @@
 #lang racket
 (require pict3d pict3d/universe "utils.rkt")
+(current-pict3d-legacy? #t) 
+
+(define window-name "4x4x4 Tic-Tac-Toe")
 
 (define z-angle 45.0)
 (define current-z-pos 0.0)
 (define scale-coef 1.0)
+(define cube-distance 5)
+(define current-player "x")
 
 (struct board (x o))
-
 (define x-pos board-x)
 (define o-pos board-o)
-
 (define empty-board (board (set) (set)))
-;;; m это вектора из трех чисел
+;;; m это вектор из трех чисел
 (define (x-move b m) 
-    (begin 
-        (board (set-add (x-pos b) m) (o-pos b))
-        (vec3d-set! game-vec3d (vector-ref m 0) (vector-ref m 1) (vector-ref m 2) "green")
-        (set! current-player "o")
+    (cond ((not (or (set-member? (x-pos b) m) (set-member? (o-pos b) m)))
+        (begin 
+            (vec3d-set! game-vec3d (vector-ref m 0) (vector-ref m 1) (vector-ref m 2) "green")
+            (set! current-player "o")
+            (board (set-add (x-pos b) m) (o-pos b))
+        ))
+        (else b)
     )
 )
 
 (define (o-move b m) 
-    (begin
-        (board (x-pos b) (set-add (o-pos b) m))
-        (vec3d-set! game-vec3d (vector-ref m 0) (vector-ref m 1) (vector-ref m 2) "blue")
-        (set! current-player "x")
+    (cond ((not (or (set-member? (x-pos b) m) (set-member? (o-pos b) m)))
+        (begin
+            (vec3d-set! game-vec3d (vector-ref m 0) (vector-ref m 1) (vector-ref m 2) "blue")
+            (set! current-player "x")
+            (board (x-pos b) (set-add (o-pos b) m))
+        ))
+        (else b)
     )
-
 )
 
 (define current-pos (vector 0 0 0))
-(define current-player "x")
-(define cur-clr (emitted "yellow" 5))
 
 (define game-field empty-pict3d)
 (define lights empty-pict3d)
@@ -45,22 +51,18 @@
     )
 )
 
-(define light-vec3d
-    (vector
-        (vector (vector cur-clr           (emitted "white") (emitted "white") (emitted "white")) (vector (emitted "white") (emitted "white") (emitted "white") (emitted "white")) (vector (emitted "white") (emitted "white") (emitted "white") (emitted "white")) (vector (emitted "white") (emitted "white") (emitted "white") (emitted "white"))) 
-        (vector (vector (emitted "white") (emitted "white") (emitted "white") (emitted "white")) (vector (emitted "white") (emitted "white") (emitted "white") (emitted "white")) (vector (emitted "white") (emitted "white") (emitted "white") (emitted "white")) (vector (emitted "white") (emitted "white") (emitted "white") (emitted "white"))) 
-        (vector (vector (emitted "white") (emitted "white") (emitted "white") (emitted "white")) (vector (emitted "white") (emitted "white") (emitted "white") (emitted "white")) (vector (emitted "white") (emitted "white") (emitted "white") (emitted "white")) (vector (emitted "white") (emitted "white") (emitted "white") (emitted "white"))) 
-        (vector (vector (emitted "white") (emitted "white") (emitted "white") (emitted "white")) (vector (emitted "white") (emitted "white") (emitted "white") (emitted "white")) (vector (emitted "white") (emitted "white") (emitted "white") (emitted "white")) (vector (emitted "white") (emitted "white") (emitted "white") (emitted "white"))) 
-    )
-)
-
 (define (redraw-field)
     (begin 
         (set! game-field empty-pict3d)
         (for ([i '(0 1 2 3)])
             (for ([j '(0 1 2 3)])
                 (for ([k '(0 1 2 3)])
-                    (set! game-field (combine game-field (create-cube (* 3 j) (* 3 k) (* 3 i) (vec3d-ref game-vec3d k j i))))
+                    (set! game-field (combine game-field (create-cube (* cube-distance j) 
+                                                                      (* cube-distance k) 
+                                                                      (* cube-distance i) 
+                                                                      (vec3d-ref game-vec3d k j i )
+                                                                      (if (equal? (vector k j i) current-pos) 1.0 default-cube-scale)))
+                    )
                 )
             )
         )
@@ -74,7 +76,7 @@
         (for ([i '(0 1 2 3)])
             (for ([j '(0 1 2 3)])
                 (for ([k '(0 1 2 3)])
-                    (set! lights (combine lights  (light (pos (+ 1.5 (* 3 j)) (+ 1.5 (* 3 k)) (+ 1.5 (* 3 i))) (vec3d-ref light-vec3d k j i))))
+                    (set! lights (combine lights  (light (pos (+ 1.5 (* cube-distance j)) (+ 1.5 (* cube-distance k)) (+ 1.5 (* cube-distance i))) (emitted "white"))))
                 )
             )
         )
@@ -86,10 +88,8 @@
         (vector-set! new-pos 0 (modulo (vector-ref new-pos 0) 4))
         (vector-set! new-pos 1 (modulo (vector-ref new-pos 1) 4))
         (vector-set! new-pos 2 (modulo (vector-ref new-pos 2) 4))
-        (vec3d-set! light-vec3d (vector-ref current-pos 0) (vector-ref current-pos 1) (vector-ref current-pos 2) (emitted "white"))
         (set! current-pos new-pos)
-        (vec3d-set! light-vec3d (vector-ref new-pos 0) (vector-ref new-pos 1) (vector-ref new-pos 2) cur-clr)
-        (redraw-light)           
+        (redraw-field)           
     )
 )
 
@@ -125,8 +125,8 @@
             [("control") (move-cursor (vector (vector-ref current-pos 0) (vector-ref current-pos 1) (sub1 (vector-ref current-pos 2))))]
             [("f") (begin
                         (if (eq? current-player "x")   
-                            (x-move empty-board current-pos)
-                            (o-move empty-board current-pos)
+                            (set! empty-board (x-move empty-board current-pos))
+                            (set! empty-board (o-move empty-board current-pos))
                         )
                         (redraw-field)
                    )]         
@@ -136,4 +136,4 @@
 
 (redraw-light)
 (redraw-field)
-(big-bang3d 0  #:name "4x4x4 Tic-Tac-Toe" #:width 1000 #:height 800 #:on-key on-key #:on-draw on-draw)
+(big-bang3d 0  #:name window-name #:width 1000 #:height 800 #:on-key on-key #:on-draw on-draw)
