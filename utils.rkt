@@ -8,10 +8,10 @@
 
 (provide default-cube-scale rotate-angle coef z-step
          create-cube vec3d-ref vec3d-set! make-vec3d
-        ;;;  minimax
+         minimax
          game% interactive-player
          board x-pos o-pos x-move o-move x% o%
-         free-cells wins?
+         free-cells wins? winning-positions
 )
 
 ;;; 
@@ -56,29 +56,29 @@
     (for/vector ((i size)) (helper size init-val)))
 ;;; --------------------------------------------------------------------
 
-;;; (define (minimax tree)
-;;;     (define (minimax-h node alpha beta max-player)
-;;;         (define (next-max x v)
-;;;             (if (or (null? x) (<= beta v)) 
-;;;                 v
-;;;                 (next-max (cdr x)
-;;;                       (max v (minimax-h (car x) v beta (not max-player)))))
-;;;         )
-;;;         (define (next-min x v)
-;;;             (if (or (null? x) (<= v alpha)) 
-;;;                 v
-;;;                 (next-min (cdr x)
-;;;                       (min v (minimax-h (car x) alpha v (not max-player)))))
-;;;         )
-;;;         (cond 
-;;;             ((number? node) node)
-;;;             ((null? node) 0.0)
-;;;             (max-player (next-max node alpha))
-;;;             (else (next-min node beta))
-;;;         )
-;;;     )
-;;;     (!(minimax-h tree -inf.0 +inf.0 #f))
-;;; )
+(define (minimax tree)
+    (define (minimax-h node alpha beta max-player)
+        (define (next-max x v)
+            (if (or (null? x) (<= beta v)) 
+                v
+                (next-max (cdr x)
+                      (max v (minimax-h (car x) v beta (not max-player)))))
+        )
+        (define (next-min x v)
+            (if (or (null? x) (<= v alpha)) 
+                v
+                (next-min (cdr x)
+                      (min v (minimax-h (car x) alpha v (not max-player)))))
+        )
+        (cond 
+            ((number? node) node)
+            ((null? node) 0.0)
+            (max-player (next-max node alpha))
+            (else (next-min node beta))
+        )
+    )
+    (!(minimax-h tree -inf.0 +inf.0 #f))
+)
 
 
 ;;; --------------------------------------------------------------------
@@ -98,43 +98,57 @@
  
     ;; выбор оптимального хода по минимаксу 
     ;; из нескольких оптимальных выбирается один случайно
-    ;;; (define/public ((optimal-move look-ahead) S)
-    ;;;     (!  (argmax 
-    ;;;             (lambda (m) (!(minimax (game-tree S m look-ahead)))) 
-    ;;;             (shuffle (possible-moves S))
-    ;;;         )
-    ;;;     )
-    ;;; )
+    (define/public ((optimal-move look-ahead) S)
+        (let*   ((opt-move (!(argmax 
+                              (lambda (m) (!(minimax (game-tree S m look-ahead)))) 
+                              (shuffle (possible-moves S))
+                            ))
+                ))
+                (begin
+                    (displayln "\nOPTIMAL MOVE:")
+                    (displayln opt-move)
+                    opt-move
+                )
+        )
+    )
  
 ;;;     ;; game-tree :: State -> (Move -> (Tree of Real))
 ;;; 	;; построение дерева с оценками
-;;;     (define (game-tree St m look-ahead)
-;;; 	   ;; вспомогательная функция, строящая закольцованный список из пары элементов
-;;;         (define (help a b) (begin (define l (mlist a b a)) (set-mcdr! l (mcons b l)) l))
-;;;         (define (new-ply moves i s)	  
-;;;             (cond
-;;;                 ((my-win? s) +inf.0) ; в выигрышной позиции оценка = + бесконечность
-;;;                 ((my-loss? s) -inf.0) ; в проигрышной = - бесконечность
-;;;                 ((draw-game? s)     0) ; при ничье = 0
-;;;                 ((>= i look-ahead)  (f-h s)) ; если исчерпана глубина, то используется эвристическая оценка 
-;;;                 (else 
-;;;                     (map 
-;;;                         (lambda (x) (new-ply (mcdr moves) (+ 1 i) ((mcar moves) s x)))
-;;;                         (possible-moves s)
-;;;                     )
-;;;                 ) ; рассматриваем все возможные ходы и строим их оценки
-;;; 	    	)
-;;;         )
-;;;         (new-ply (help opponent-move my-move) 1 (my-move St m))
-;;;     )
+    (define (game-tree St m look-ahead)
+	   ;; вспомогательная функция, строящая закольцованный список из пары элементов
+        (define (help a b) (begin (define l (mlist a b a)) (set-mcdr! l (mcons b l)) l))
+        (define (new-ply moves i s)	  
+            (cond
+                ((my-win? s) +inf.0) ; в выигрышной позиции оценка = + бесконечность
+                ((my-loss? s) -inf.0) ; в проигрышной = - бесконечность
+                ((draw-game? s)     0) ; при ничье = 0
+                ((>= i look-ahead)  (f-h s)) ; если исчерпана глубина, то используется эвристическая оценка 
+                (else 
+                    (map 
+                        (lambda (x) (new-ply (mcdr moves) (+ 1 i) ((mcar moves) s x)))
+                        (possible-moves s)
+                    )
+                ) ; рассматриваем все возможные ходы и строим их оценки
+	    	)
+        )
+        (new-ply (help opponent-move my-move) 1 (my-move St m))
+    )
  
-;;;     ;; make-move :: State (State -> Move) -> (Move State Symbol)
     (define/public (make-move S move-method)
         (cond
             ((my-loss? S)   (values '() S 'loss))         
             ((draw-game? S) (values '() S 'draw))   
-            (else   (let* ((m* (! (move-method S)))
-                           (S* (my-move S m*)))
+            (else   (let* (
+                            (p1 (display "Before:\n"))
+                            (t1 (display (x-pos S)))
+                            (t2 (displayln (o-pos S)))
+                            (m* (! (move-method S)))
+                            ;;; (print-move (displayln m*))
+                            (S* (my-move S m*))
+                            (p3 (display "\nAfter:\n"))
+                            (t3 (displayln (x-pos S*)))
+                            (t4 (displayln (o-pos S*)))
+                          )
                     (cond
                         ((my-win? S*)    (values m* S* 'win)) 
                         ((draw-game? S*) (values m* S* 'draw))
@@ -152,16 +166,22 @@
 (define (interactive-player game)
     (class game
         (super-new)
-        ;;; (inherit make-move optimal-move)
-        (inherit make-move)
+        (inherit make-move optimal-move)
     
         (init-field name
+                   [last-move 'undefined]
                    [look-ahead 4]
                    [opponent 'undefined]
-                   [move-method 'undefined])
+                   [move-method (optimal-move look-ahead)])
  
+        (define/public (get-last-move) last-move)
+        (define/public (set-last-move! m) (set! last-move m))
+
+
         (define/public (your-turn S)
             (define-values (m S* status) (make-move S move-method))
+            ;;; (displayln name)
+            (set-last-move! m)
             (!(case status
                 ['win  "WIN"]
                 ['loss "LOSS"]

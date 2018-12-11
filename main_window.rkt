@@ -16,6 +16,9 @@
 
 (define current-player "x")          ;;; переменная, определяющая игрока, который делает текущий ход
 (define current-pos (vector 3 3 2))  ;;; переменаня, задающая изначальное положение курсора для выбора хода
+(define x-ai? 'undefined)                    ;;; #f - значит крестиками ходит user, иначе ходит компьютер
+(define o-ai? 'undefined)                    ;;; аналогично для ноликов
+
 
 (define empty-board (board (set) (set)))   ;;; 
 (define game-field empty-pict3d)           ;;; объекты игрового поля (кубики типа Pict3d) (нужно для GUI)
@@ -31,7 +34,6 @@
 (define (x-player-move b) 
     (begin 
         (vec3d-set! game-vec3d (vector-ref current-pos 0) (vector-ref current-pos 1) (vector-ref current-pos 2) "green")
-        (set! current-player "o")
         (redraw-light "blue")
         current-pos
     )
@@ -40,7 +42,6 @@
 (define (o-player-move b) 
     (begin
         (vec3d-set! game-vec3d (vector-ref current-pos 0) (vector-ref current-pos 1) (vector-ref current-pos 2) "blue")
-        (set! current-player "x")
         (redraw-light "green")
         current-pos
     )
@@ -136,8 +137,15 @@
             ;;; ввод хода осуществляется по нажатию клавиши F
             [("f") 
                     ;;; проверка того, что кубик не занят
-                    (cond ((not (or (set-member? (x-pos empty-board) current-pos) (set-member? (o-pos empty-board) current-pos)))
+                    (cond (
+                            (or 
+                                (not (or (set-member? (x-pos empty-board) current-pos) (set-member? (o-pos empty-board) current-pos)))
+                                (and (eq? current-player "o") o-ai?)
+                                (and (eq? current-player "x") x-ai?)
+                            )
                         (begin
+                            (display "\nCurrent Player: ")
+                            (displayln current-player)
                             (if (eq? current-player "x")   
                                 ;;; если ходят крестики
                                 ;;; делаем ход, а после смотрим на результат
@@ -162,6 +170,25 @@
                                             (display "X-player moves:\n")
                                             (display (x-pos empty-board))
                                             (display "\n")
+                                            (display "O-player moves:\n")
+                                            (display (o-pos empty-board))
+                                            (display "\n")
+                                            (set! current-player "o")
+                                            (display "Player X made move: ")
+                                            (displayln (send user-x get-last-move))
+                                            
+                                            (cond (x-ai?
+                                                    (vec3d-set! game-vec3d (vector-ref (send user-x get-last-move) 0) 
+                                                                           (vector-ref (send user-x get-last-move) 1) 
+                                                                           (vector-ref (send user-x get-last-move) 2) "green")
+                                                    (redraw-light "blue")
+                                                  )
+                                            )
+                                            (cond ((and o-ai? (not x-ai?)) 
+                                                    (on-key s n t "f") 
+                                                    (values 0 0 0)
+                                                  )
+                                            )
                                         )
                                     )
                                 )
@@ -183,9 +210,28 @@
                                             ;;; мутирование игрового поля
                                             (set! empty-board move-result)
                                             ;;; вывод для дебага в консоли
-                                            (display "O-player moves:\n")
+                                            (display "X-player moves:\n")
                                             (display (x-pos empty-board))
                                             (display "\n")
+                                            (display "O-player moves:\n")
+                                            (display (o-pos empty-board))
+                                            (display "\n")
+                                            (set! current-player "x")
+                                            (display "Player O made move: ")
+                                            (displayln (send user-o get-last-move))
+
+                                            (cond (o-ai?
+                                                    (vec3d-set! game-vec3d (vector-ref (send user-o get-last-move) 0) 
+                                                                           (vector-ref (send user-o get-last-move) 1) 
+                                                                           (vector-ref (send user-o get-last-move) 2) "blue")
+                                                    (redraw-light "green")
+                                                  )
+                                            )
+                                            (cond ((and x-ai? (not o-ai?))
+                                                    (on-key s n t "f") 
+                                                    (values 0 0 0)
+                                                  )
+                                            )
                                         )
                                     )
                                 )
@@ -198,30 +244,64 @@
     )
 )            
 
-;;; взято из шаблрна tictak
-(define user-x 
-    (new (force (interactive-player x%)) 
-        [name "User X"]
-        [move-method x-player-move]
-	)
-)
-(define user-o 
-    (new (force (interactive-player o%)) 
-        [name "User O"]
-        [move-method o-player-move]
-	)
- )
-
 ;;; функция старта игры
 (define (start-game p1 p2)
     (set-field! opponent p1 p2)
     (set-field! opponent p2 p1)
     ;;; начальная отрисовка
-    (redraw-light "green")
+    (if (and x-ai? o-ai?)
+        (redraw-light "white")
+        (redraw-light "green")
+    )
     (redraw-field)
     ;;; главный цикл отрисовки и создание окна игры, сюда и передаются все диспетчеризующие фунции и функции отрисовки
-    (big-bang3d 0  #:name window-name #:width 1000 #:height 800 #:on-key on-key #:on-draw on-draw)
+    (big-bang3d 0  #:name window-name #:width 800 #:height 600 #:on-key on-key #:on-draw on-draw)
 )
 
+(define (input-player)
+    (let ((p (read)))
+        (cond
+            ((= p 1) #f) 
+            ((= p 2) #t)
+            (else (displayln "Повторите ввод!") (input-player)) 
+        )
+    )
+)
+
+(define (setup-players)
+    (displayln "Выберите, кто играет за крестики: (введите нужную цифру)")
+    (displayln "1. Пользователь")
+    (displayln "2. ИИ")
+    (set! x-ai? (input-player))
+
+    (displayln "Выберите, кто играет за нолики: (введите нужную цифру)")
+    (displayln "1. Пользователь")
+    (displayln "2. ИИ")
+    (set! o-ai? (input-player))
+)
+
+;;; приглашение ко вводу игроков
+(! (setup-players))
+;;; взято из шаблона tictak
+(define user-x 
+    (if x-ai?
+        (new (force (interactive-player x%)) [name "AI X"] [look-ahead 2])
+        (new (force (interactive-player x%)) 
+            [name "User X"]
+            [move-method x-player-move]
+        )
+    )
+)
+
+(define user-o 
+    (if o-ai?
+        (new (force (interactive-player o%)) [name "AI O"] [look-ahead 2])
+        (new (force (interactive-player o%)) 
+            [name "User O"]
+            [move-method o-player-move]
+        )
+    )
+)
+;;; старт игры
 (! (start-game user-x user-o))
 
