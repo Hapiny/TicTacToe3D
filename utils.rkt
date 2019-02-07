@@ -6,6 +6,7 @@
 (current-pict3d-width 800) 
 (current-pict3d-height 800) 
 
+;;; необходимо для использования в файле main_window.rkt
 (provide default-cube-scale rotate-angle coef z-step
          create-cube vec3d-ref vec3d-set! make-vec3d
          minimax
@@ -14,12 +15,16 @@
          free-cells wins? winning-positions
 )
 
-;;; 
+;;; размер кубика по умолчанию
 (define default-cube-scale 0.6)
+;;; угол, на который поворачиваются объекты за одно нажатие кнопок A/D
 (define rotate-angle 5.0)
+;;; изменение высоты, происходящее за одно нажатие клавиш Z/X
 (define z-step 0.2)
+;;; коэффициент приближения/удаление объктов при нажатии W/S
 (define coef 0.05)
 
+;;; структура игровой доски, аналогично шаблону tictac.rkt
 (struct board (x o))
 (define x-pos board-x)
 (define o-pos board-o)
@@ -55,7 +60,7 @@
     )
     (for/vector ((i size)) (helper size init-val)))
 ;;; --------------------------------------------------------------------
-
+;;; минимаксный алгоритм
 (define (minimax tree)
     (define (minimax-h node alpha beta max-player)
         (define (next-max x v)
@@ -82,7 +87,8 @@
 
 
 ;;; --------------------------------------------------------------------
-;;; описание класса, реализующего логику и оптимальную стратегию произвольной игры с нулевой суммой и полной информацией
+;;; описание класса, реализующего логику и оптимальную стратегию произвольной игры 
+;;; с нулевой суммой и полной информацией
 (define game%
   (class object%
     (super-new)
@@ -112,8 +118,7 @@
         )
     )
  
-;;;     ;; game-tree :: State -> (Move -> (Tree of Real))
-;;; 	;; построение дерева с оценками
+;;; построение дерева с оценками
     (define (game-tree St m look-ahead)
 	   ;; вспомогательная функция, строящая закольцованный список из пары элементов
         (define (help a b) (begin (define l (mlist a b a)) (set-mcdr! l (mcons b l)) l))
@@ -122,7 +127,8 @@
                 ((my-win? s) +inf.0) ; в выигрышной позиции оценка = + бесконечность
                 ((my-loss? s) -inf.0) ; в проигрышной = - бесконечность
                 ((draw-game? s)     0) ; при ничье = 0
-                ((>= i look-ahead)  (f-h s)) ; если исчерпана глубина, то используется эвристическая оценка 
+                ((>= i look-ahead)  (f-h s)) ; если исчерпана глубина, 
+                                             ; то используется эвристическая оценка 
                 (else 
                     (map 
                         (lambda (x) (new-ply (mcdr moves) (+ 1 i) ((mcar moves) s x)))
@@ -161,8 +167,8 @@
 )
  
 ;;; --------------------------------------------------------------------
-;; Реализация класса игрока
-;; Параметр `game` указывает, какая игра решается.
+;;; Реализация класса игрока
+;;; Параметр `game` указывает, какая игра решается.
 (define (interactive-player game)
     (class game
         (super-new)
@@ -180,12 +186,11 @@
 
         (define/public (your-turn S)
             (define-values (m S* status) (make-move S move-method))
-            ;;; (displayln name)
             (set-last-move! m)
             (!(case status
-                ['win  "WIN"]
-                ['loss "LOSS"]
-                ['draw "DRAW"]
+                ['win  (list "WIN" S*)]
+                ['loss (list "LOSS" S*)]
+                ['draw (list "DRAW" S*)]
                 [else  S*])
             )
         )
@@ -344,7 +349,8 @@
     (ormap (lambda (x) (subset? x (s b))) winning-positions))
 
 ;; функция эвристической оценки позиции
-;; из количества линий, открытых для крестиков, вычитается количество линий, открытых для ноликов
+;; из количества линий, открытых для крестиков, 
+;; вычитается количество линий, открытых для ноликов
 (define (f-h s)
     (- (count-open-4 (open-4-cells o-pos s)) (count-open-4 (open-4-cells x-pos s))))  
 

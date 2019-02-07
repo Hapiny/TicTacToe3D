@@ -1,0 +1,332 @@
+ 1	#lang racket
+ 2	;;; используемые библиотеки 
+ 3	;;; чтобы установить pict3d нужно ввести команду в терминле:
+ 4	;;; raco pkg install pict3d
+ 5	(require pict3d pict3d/universe racket/class lazy/force "utils.rkt")
+ 6	(current-pict3d-legacy? #t) 
+ 7	
+ 8	;;; текст в заголовке окна 
+ 9	(define window-name "4x4x4 Tic-Tac-Toe")
+10	
+11	;;; игровое поле представляет собой 64 кубика, которые отрисовываются в виде 3D куба со стороной в 4 кубика
+12	(define z-angle 45.0)       ;;; переменная, определяющая на какой угол относительно оси Z повернуты объекты игрового поля
+13	(define current-z-pos 0.0)  ;;; переменная, определяющая высоту, на которой находится игровое поле
+14	(define scale-coef 1.0)     ;;; переменная, определяющая размер объектов игрового поля
+15	(define cube-distance 5)    ;;; расстояние между кубиками игрового поля
+16	
+17	(define current-player "x")          ;;; переменная, определяющая игрока, который делает текущий ход
+18	(define current-pos (vector 3 3 2))  ;;; переменаня, задающая изначальное положение курсора для выбора хода
+19	(define x-ai? 'undefined)                    ;;; #f - значит крестиками ходит user, иначе ходит компьютер
+20	(define o-ai? 'undefined)                    ;;; аналогично для ноликов
+21	
+22	
+23	(define empty-board (board (set) (set)))   ;;; 
+24	(define game-field empty-pict3d)           ;;; объекты игрового поля (кубики типа Pict3d) (нужно для GUI)
+25	(define lights empty-pict3d)               ;;; освещение игрового поля (GUI)
+26	(define game-vec3d (make-vec3d 4 "white")) ;;; переменная для хранения цветов кубиков игрового поля (нужно для GUI)
+27	
+28	;;; объект камеры, которая расположена в точке (25,25,15) и смотрит в начало координат
+29	(define camera (basis 'camera (point-at (pos 25 25 15) origin)))
+30	
+31	;;; функции хода игрока 
+32	;;; m это вектор из трех чисел
+33	;;; b текущее состояние игрового поля
+34	(define (x-player-move b) 
+35	    (begin 
+36	        (vec3d-set! game-vec3d 
+37	            (vector-ref current-pos 0) 
+38	            (vector-ref current-pos 1) 
+39	            (vector-ref current-pos 2) "green")
+40	        (redraw-light "blue")
+41	        current-pos
+42	    )
+43	)
+44	
+45	(define (o-player-move b) 
+46	    (begin
+47	        (vec3d-set! game-vec3d 
+48	            (vector-ref current-pos 0) 
+49	            (vector-ref current-pos 1) 
+50	            (vector-ref current-pos 2) 
+51	            "blue")
+52	        (redraw-light "green")
+53	        current-pos
+54	    )
+55	)
+56	
+57	;;; функция для отрисовки (перерисовки) объектов игрового поля
+58	(define (redraw-field)
+59	    (begin 
+60	        (set! game-field empty-pict3d) ;;; инициализируем пустым объектов (очищает от старого)
+61	        (for ([i '(0 1 2 3)])          ;;; циклом проходимся по vec3d, который содержит цвета кубиков поля
+62	            (for ([j '(0 1 2 3)])      ;;; и создаем новые объекты кубики с соответсвующими цветами
+63	                (for ([k '(0 1 2 3)])  ;;; функция combine комбинирует объекты типа pict3d
+64	                    (set! game-field 
+65	                        (combine game-field 
+66	                            (create-cube (* cube-distance j) 
+67	                                         (* cube-distance k) 
+68	                                         (* cube-distance i) 
+69	                                         (vec3d-ref game-vec3d k j i )     
+70	                        ;;; если кубик- это курсор для указания хода, то отрисовываем его большим
+71	                                         (if (equal? (vector k j i) current-pos) 
+72	                                            1.5 default-cube-scale)))
+73	                    )
+74	                )
+75	            )
+76	        )
+77	    )
+78	)
+79	;;; функция для отрисовки (перерисовки) света
+80	;;; аналогично фунции выше
+81	(define (redraw-light clr)
+82	    (begin
+83	        (set! lights empty-pict3d)
+84	        (for ([i '(0 1 2 3)])
+85	            (for ([j '(0 1 2 3)])
+86	                (for ([k '(0 1 2 3)])
+87	                    (set! lights (combine lights  
+88	                        (light
+89	                            ;;; позиция источника света 
+90	                            (pos (+ 1.5 (* cube-distance j)) 
+91	                                 (+ 1.5 (* cube-distance k)) 
+92	                                 (+ 1.5 (* cube-distance i))
+93	                            ) 
+94	                            ;;; задание цвета света и насыщенности
+95	                            (emitted clr 2))
+96	                        )
+97	                    )
+98	                )
+99	            )
+100	        )
+101	    )
+102	)
+103	
+104	;;; фукнция отрисовки эффекта движения курсора при помощи клавиш стрелок
+105	(define (move-cursor new-pos)
+106	    (begin
+107	        ;;; если курсор вышел за пределы поля, то нужно вернуть его на противоположную сторону
+108	        (vector-set! new-pos 0 (modulo (vector-ref new-pos 0) 4)) 
+109	        (vector-set! new-pos 1 (modulo (vector-ref new-pos 1) 4))
+110	        (vector-set! new-pos 2 (modulo (vector-ref new-pos 2) 4))
+111	        (set! current-pos new-pos)
+112	        ;;; при перерисовке current-pos (положение курсора) будет другое, поэтому другой кубик будет большим
+113	        ;;; имитация движения курсора
+114	        (redraw-field)           
+115	    )
+116	)
+117	
+118	;;; функция, отвечающая за отрисовку объектов игрового поля
+119	;;; примеры функции и пояснение аргументов было в документации на сайте racket.org
+120	(define (on-draw s n t)
+121	    (combine 
+122	            ;;; здесь указываются какие трансформации нужно пременять к объектам
+123	            (move-z (scale (rotate-z/center game-field z-angle) scale-coef) current-z-pos)
+124	            (move-z (scale lights scale-coef) current-z-pos)  
+125	            camera
+126	    )
+127	)
+128	
+129	;;; функция диспетчеризации клавиш клавиатуры
+130	;;; примеры функции и пояснение аргументов было в документации на сайте racket.org
+131	(define (on-key s n t k)
+132	    (begin
+133	        ;;; (display k)
+134	        (case k
+135	            ;;; вращение поля от-но оси OZ
+136	            [("a") (set! z-angle (+ z-angle rotate-angle))]
+137	            [("d") (set! z-angle (- z-angle rotate-angle))]
+138	
+139	            ;;; приближение поля (эффект залетания внутрь)
+140	            [("w") (set! scale-coef (+ scale-coef coef))]
+141	            [("s") (set! scale-coef (- scale-coef coef))]
+142	
+143	            ;;; подъем или опускание игрового поля
+144	            [("z") (set! current-z-pos (- current-z-pos z-step))]
+145	            [("x") (set! current-z-pos (+ current-z-pos z-step))]
+146	
+147	            ;;; управление курсором для ввода хода игрока
+148	            ;;; стрелоки для хождения по плоскости 4 на 4
+149	            ;;; клавиши left shift и left ctrl для подъема или спуска на другие плоскости
+150	            [("right")   (move-cursor (vector (add1 (vector-ref current-pos 0)) (vector-ref current-pos 1) (vector-ref current-pos 2)))]
+151	            [("left")    (move-cursor (vector (sub1 (vector-ref current-pos 0)) (vector-ref current-pos 1) (vector-ref current-pos 2)))]
+152	            [("down")    (move-cursor (vector (vector-ref current-pos 0) (add1 (vector-ref current-pos 1)) (vector-ref current-pos 2)))]
+153	            [("up")      (move-cursor (vector (vector-ref current-pos 0) (sub1 (vector-ref current-pos 1)) (vector-ref current-pos 2)))]
+154	            [("shift")   (move-cursor (vector (vector-ref current-pos 0) (vector-ref current-pos 1) (add1 (vector-ref current-pos 2))))]
+155	            [("control") (move-cursor (vector (vector-ref current-pos 0) (vector-ref current-pos 1) (sub1 (vector-ref current-pos 2))))]
+156	            
+157	            ;;; ввод хода осуществляется по нажатию клавиши F
+158	            [("f") 
+159	                    ;;; проверка того, что кубик не занят
+160	                    (cond (
+161	                            (or 
+162	                                (not (or (set-member? (x-pos empty-board) current-pos) (set-member? (o-pos empty-board) current-pos)))
+163	                                (and (eq? current-player "o") o-ai?)
+164	                                (and (eq? current-player "x") x-ai?)
+165	                            )
+166	                        (begin
+167	                            (display "\nCurrent Player: ")
+168	                            (displayln current-player)
+169	                            (if (eq? current-player "x")   
+170	                                ;;; если ходят крестики
+171	                                ;;; делаем ход, а после смотрим на результат
+172	                                (let ((move-result (send user-x your-turn empty-board)))
+173	                                    ;;; если строка, то дальше разбирается что за строка
+174	                                    (if (string? move-result) 
+175	                                        (begin
+176	                                            (case move-result
+177	                                                ;;; если победили, то отрисовываем всё своим цветом
+178	                                                [("WIN") (set! game-vec3d (make-vec3d 4 "green"))]
+179	                                                [("LOSS") (set! game-vec3d (make-vec3d 4 "blue"))]
+180	                                                ;;; если ничья, то отрисовываем всё красным
+181	                                                [("DRAW") (set! game-vec3d (make-vec3d 4 "red"))]
+182	                                            ) 
+183	                                            (redraw-light "green")
+184	                                        )
+185	                                        ;;; если вернулся объект поля (board)
+186	                                        (begin
+187	                                            ;;; мутирование игрового поля
+188	                                            (set! empty-board move-result)
+189	                                            ;;; вывод для дебага в консоли
+190	                                            (display "X-player moves:\n")
+191	                                            (display (x-pos empty-board))
+192	                                            (display "\n")
+193	                                            (display "O-player moves:\n")
+194	                                            (display (o-pos empty-board))
+195	                                            (display "\n")
+196	                                            (set! current-player "o")
+197	                                            (display "Player X made move: ")
+198	                                            (displayln (send user-x get-last-move))
+199	                                            
+200	                                            (cond (x-ai?
+201	                                                    (vec3d-set! game-vec3d (vector-ref (send user-x get-last-move) 0) 
+202	                                                                           (vector-ref (send user-x get-last-move) 1) 
+203	                                                                           (vector-ref (send user-x get-last-move) 2) "green")
+204	                                                    (redraw-light "blue")
+205	                                                  )
+206	                                            )
+207	                                            (cond ((and o-ai? (not x-ai?)) 
+208	                                                    (on-key s n t "f") 
+209	                                                    (values 0 0 0)
+210	                                                  )
+211	                                            )
+212	                                        )
+213	                                    )
+214	                                )
+215	                                ;;; если ходят нолики
+216	                                ;;; делаем ход, а после смотрим на результат
+217	                                (let ((move-result (send user-o your-turn empty-board)))
+218	                                    (if (string? move-result) 
+219	                                        (begin
+220	                                            (case move-result
+221	                                                ;;; если победили, то отрисовываем всё своим цветом
+222	                                                [("WIN") (set! game-vec3d (make-vec3d 4 "blue"))]
+223	                                                [("LOSS") (set! game-vec3d (make-vec3d 4 "green"))]
+224	                                                ;;; если ничья, то отрисовываем всё красным
+225	                                                [("DRAW") (set! game-vec3d (make-vec3d 4 "red"))]
+226	                                            ) 
+227	                                            (redraw-light "blue")
+228	                                        )
+229	                                        (begin
+230	                                            ;;; мутирование игрового поля
+231	                                            (set! empty-board move-result)
+232	                                            ;;; вывод для дебага в консоли
+233	                                            (display "X-player moves:\n")
+234	                                            (display (x-pos empty-board))
+235	                                            (display "\n")
+236	                                            (display "O-player moves:\n")
+237	                                            (display (o-pos empty-board))
+238	                                            (display "\n")
+239	                                            (set! current-player "x")
+240	                                            (display "Player O made move: ")
+241	                                            (displayln (send user-o get-last-move))
+242	
+243	                                            (cond (o-ai?
+244	                                                    (vec3d-set! game-vec3d (vector-ref (send user-o get-last-move) 0) 
+245	                                                                           (vector-ref (send user-o get-last-move) 1) 
+246	                                                                           (vector-ref (send user-o get-last-move) 2) "blue")
+247	                                                    (redraw-light "green")
+248	                                                  )
+249	                                            )
+250	                                            (cond ((and x-ai? (not o-ai?))
+251	                                                    (on-key s n t "f") 
+252	                                                    (values 0 0 0)
+253	                                                  )
+254	                                            )
+255	                                        )
+256	                                    )
+257	                                )
+258	                            )
+259	                            ;;; после изменения цвета одного кубика (в который сейчас сходили) нужно перерисовать поле
+260	                            (redraw-field)
+261	                        ))
+262	                    )]         
+263	        )
+264	    )
+265	)            
+266	
+267	;;; функция старта игры
+268	(define (start-game p1 p2)
+269	    (set-field! opponent p1 p2)
+270	    (set-field! opponent p2 p1)
+271	    ;;; начальная отрисовка
+272	    (if (and x-ai? o-ai?)
+273	        (redraw-light "white")
+274	        (redraw-light "green")
+275	    )
+276	    (redraw-field)
+277	    ;;; главный цикл отрисовки и создание окна игры, 
+278	    ;;; сюда и передаются все диспетчеризующие фунции и функции отрисовки
+279	    (big-bang3d 0  #:name window-name 
+280	                   #:width 800 
+281	                   #:height 600 
+282	                   #:on-key on-key 
+283	                   #:on-draw on-draw)
+284	)
+285	
+286	(define (input-player)
+287	    (let ((p (read)))
+288	        (cond
+289	            ((= p 1) #f) 
+290	            ((= p 2) #t)
+291	            (else (displayln "Повторите ввод!") (input-player)) 
+292	        )
+293	    )
+294	)
+295	
+296	(define (setup-players)
+297	    (displayln "Выберите, кто играет за крестики: (введите нужную цифру)")
+298	    (displayln "1. Пользователь")
+299	    (displayln "2. ИИ")
+300	    (set! x-ai? (input-player))
+301	
+302	    (displayln "Выберите, кто играет за нолики: (введите нужную цифру)")
+303	    (displayln "1. Пользователь")
+304	    (displayln "2. ИИ")
+305	    (set! o-ai? (input-player))
+306	)
+307	
+308	;;; приглашение ко вводу игроков
+309	(! (setup-players))
+310	;;; взято из шаблона tictak
+311	(define user-x 
+312	    (if x-ai?
+313	        (new (force (interactive-player x%)) [name "AI X"] [look-ahead 2])
+314	        (new (force (interactive-player x%)) 
+315	            [name "User X"]
+316	            [move-method x-player-move]
+317	        )
+318	    )
+319	)
+320	
+321	(define user-o 
+322	    (if o-ai?
+323	        (new (force (interactive-player o%)) [name "AI O"] [look-ahead 2])
+324	        (new (force (interactive-player o%)) 
+325	            [name "User O"]
+326	            [move-method o-player-move]
+327	        )
+328	    )
+329	)
+330	;;; старт игры
+331	(! (start-game user-x user-o))
+332	

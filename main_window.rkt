@@ -18,6 +18,7 @@
 (define current-pos (vector 3 3 2))  ;;; переменаня, задающая изначальное положение курсора для выбора хода
 (define x-ai? 'undefined)                    ;;; #f - значит крестиками ходит user, иначе ходит компьютер
 (define o-ai? 'undefined)                    ;;; аналогично для ноликов
+(define win-pos (set))
 
 
 (define empty-board (board (set) (set)))   ;;; 
@@ -33,7 +34,10 @@
 ;;; b текущее состояние игрового поля
 (define (x-player-move b) 
     (begin 
-        (vec3d-set! game-vec3d (vector-ref current-pos 0) (vector-ref current-pos 1) (vector-ref current-pos 2) "green")
+        (vec3d-set! game-vec3d 
+            (vector-ref current-pos 0) 
+            (vector-ref current-pos 1) 
+            (vector-ref current-pos 2) "green")
         (redraw-light "blue")
         current-pos
     )
@@ -41,7 +45,11 @@
 
 (define (o-player-move b) 
     (begin
-        (vec3d-set! game-vec3d (vector-ref current-pos 0) (vector-ref current-pos 1) (vector-ref current-pos 2) "blue")
+        (vec3d-set! game-vec3d 
+            (vector-ref current-pos 0) 
+            (vector-ref current-pos 1) 
+            (vector-ref current-pos 2) 
+            "blue")
         (redraw-light "green")
         current-pos
     )
@@ -54,12 +62,20 @@
         (for ([i '(0 1 2 3)])          ;;; циклом проходимся по vec3d, который содержит цвета кубиков поля
             (for ([j '(0 1 2 3)])      ;;; и создаем новые объекты кубики с соответсвующими цветами
                 (for ([k '(0 1 2 3)])  ;;; функция combine комбинирует объекты типа pict3d
-                    (set! game-field (combine game-field (create-cube (* cube-distance j) 
-                                                                      (* cube-distance k) 
-                                                                      (* cube-distance i) 
-                                                                      (vec3d-ref game-vec3d k j i )     
-                                                                      ;;; если кубик- это курсор для указания хода, то отрисовываем его большим
-                                                                      (if (equal? (vector k j i) current-pos) 1.5 default-cube-scale)))
+                    (set! game-field 
+                        (combine game-field 
+                            (create-cube (* cube-distance j) 
+                                         (* cube-distance k) 
+                                         (* cube-distance i) 
+                                         (vec3d-ref game-vec3d k j i)     
+                        ;;; если кубик- это курсор для указания хода, то отрисовываем его большим
+                                         (cond 
+                                            ((equal? (vector k j i) current-pos) 1.5)
+                                            ((subset? (set (vector k j i)) win-pos) 1.5)
+                                            (else default-cube-scale)
+                                         )
+                            )
+                        )
                     )
                 )
             )
@@ -74,7 +90,17 @@
         (for ([i '(0 1 2 3)])
             (for ([j '(0 1 2 3)])
                 (for ([k '(0 1 2 3)])
-                    (set! lights (combine lights  (light (pos (+ 1.5 (* cube-distance j)) (+ 1.5 (* cube-distance k)) (+ 1.5 (* cube-distance i))) (emitted clr 2))))
+                    (set! lights (combine lights  
+                        (light
+                            ;;; позиция источника света 
+                            (pos (+ 1.5 (* cube-distance j)) 
+                                 (+ 1.5 (* cube-distance k)) 
+                                 (+ 1.5 (* cube-distance i))
+                            ) 
+                            ;;; задание цвета света и насыщенности
+                            (emitted clr 2))
+                        )
+                    )
                 )
             )
         )
@@ -151,12 +177,21 @@
                                 ;;; делаем ход, а после смотрим на результат
                                 (let ((move-result (send user-x your-turn empty-board)))
                                     ;;; если строка, то дальше разбирается что за строка
-                                    (if (string? move-result) 
+                                    (if (list? move-result) 
                                         (begin
-                                            (case move-result
+                                            (case (list-ref move-result 0)
                                                 ;;; если победили, то отрисовываем всё своим цветом
-                                                [("WIN") (set! game-vec3d (make-vec3d 4 "green"))]
-                                                [("LOSS") (set! game-vec3d (make-vec3d 4 "blue"))]
+                                                [("WIN") 
+                                                    (begin
+                                                        (set! empty-board (list-ref move-result 1))
+                                                        (displayln "GREEN WINS")
+                                                        (set! game-vec3d (make-vec3d 4 "green"))
+                                                        (displayln (x-pos empty-board))
+                                                        (set! win-pos (ormap (lambda (x) (if (subset? x (x-pos empty-board)) x #f)) winning-positions))
+                                                        (displayln win-pos)
+                                                    )
+                                                ]
+                                                ; [("LOSS") (set! game-vec3d (make-vec3d 4 "blue"))]
                                                 ;;; если ничья, то отрисовываем всё красным
                                                 [("DRAW") (set! game-vec3d (make-vec3d 4 "red"))]
                                             ) 
@@ -195,12 +230,21 @@
                                 ;;; если ходят нолики
                                 ;;; делаем ход, а после смотрим на результат
                                 (let ((move-result (send user-o your-turn empty-board)))
-                                    (if (string? move-result) 
+                                    (if (list? move-result) 
                                         (begin
-                                            (case move-result
+                                            (case (list-ref move-result 0)
                                                 ;;; если победили, то отрисовываем всё своим цветом
-                                                [("WIN") (set! game-vec3d (make-vec3d 4 "blue"))]
-                                                [("LOSS") (set! game-vec3d (make-vec3d 4 "green"))]
+                                                [("WIN") 
+                                                    (begin
+                                                        (set! empty-board (list-ref move-result 1))
+                                                        (displayln "BLUE WINS")
+                                                        (set! game-vec3d (make-vec3d 4 "blue"))
+                                                        (displayln (o-pos empty-board))
+                                                        (set! win-pos (ormap (lambda (x) (if (subset? x (o-pos empty-board)) x #f)) winning-positions))
+                                                        (displayln win-pos)
+                                                    )
+                                                ]
+                                                ; [("LOSS") (set! game-vec3d (make-vec3d 4 "green"))]
                                                 ;;; если ничья, то отрисовываем всё красным
                                                 [("DRAW") (set! game-vec3d (make-vec3d 4 "red"))]
                                             ) 
@@ -254,8 +298,13 @@
         (redraw-light "green")
     )
     (redraw-field)
-    ;;; главный цикл отрисовки и создание окна игры, сюда и передаются все диспетчеризующие фунции и функции отрисовки
-    (big-bang3d 0  #:name window-name #:width 800 #:height 600 #:on-key on-key #:on-draw on-draw)
+    ;;; главный цикл отрисовки и создание окна игры, 
+    ;;; сюда и передаются все диспетчеризующие фунции и функции отрисовки
+    (big-bang3d 0  #:name window-name 
+                   #:width 800 
+                   #:height 600 
+                   #:on-key on-key 
+                   #:on-draw on-draw)
 )
 
 (define (input-player)
